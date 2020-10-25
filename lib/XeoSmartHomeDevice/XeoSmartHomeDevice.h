@@ -150,7 +150,7 @@ class XeoSmartHomeDevice {
 
 		// MQTT
 		AsyncMqttClient * _mqttClient;
-		Task _mqttPingTask;
+		Task _mqttPingTimer;
 		void _initMqttClient();
 		void _startMqttClient();
 		void _stopMqttClient();
@@ -324,7 +324,8 @@ void XeoSmartHomeDevice :: _checkForButtonStateChanges(){
 		this->_long_detected = false;
 		unsigned long pressed_time = millis() - this->_button_press_time;
 		if(BUTTON_SHORT_PRESS_MIN < pressed_time and pressed_time < BUTTON_SHORT_PRESS_MAX){
-			this->_onButtonPress();
+			if(not this->_config_mode)
+				this->_onButtonPress();
 		}
 	}
 	_button_last_state = current_state;
@@ -352,6 +353,9 @@ void XeoSmartHomeDevice :: _initLed(){
 	FastLED.addLeds<NEOPIXEL, D8>(this->_leds, 1);
 	
 	this->_taskScheduler.addTask(_ledTask);
+	this->_ledTask.setOnDisable([this](){
+		this->_setLedColor(CRGB::Black);
+	});
 }
 
 
@@ -446,6 +450,9 @@ void XeoSmartHomeDevice :: _onWifiConnected(const WiFiEventStationModeGotIP& eve
 	}
 	this->_startMqttClient();
 	this->_wifiTimer.disable();
+	if(not this->_config_mode){
+		this->_ledTask.disable();
+	}
 }
 
 
@@ -477,6 +484,19 @@ void XeoSmartHomeDevice :: _initMqttClient() {
 	this->_mqttClient->onConnect([this](bool sessionPresent){
 		this->_onMqttConnected(sessionPresent);
 	});
+
+	this->_taskScheduler.addTask(this->_mqttPingTimer);
+	this->_mqttPingTimer.setInterval(30 * 1000);
+	this->_mqttPingTimer.setIterations(TASK_FOREVER);
+	this->_mqttPingTimer.setCallback([this](){
+		if(this->_debug)
+			Serial.println("MQTT sending ping");
+		String topic = "device/" + String(this->_serial) + "/ping";
+		this->_mqttClient->publish(topic.c_str(), 2, false, "ping");
+		size_t now = time(nullptr);
+		Serial.println(ctime(&now));
+	});
+	this->_mqttPingTimer.enable();
 }
 
 
@@ -494,8 +514,8 @@ void XeoSmartHomeDevice :: _onMqttConnected(bool sessionPresent){
 	if(this->_debug)
 		Serial.println("MQTT connected");
 
-	String topic = "device/" + String(this->_serial) + "/#";
-	this->_mqttClient->subscribe(topic.c_str(), 2);
+	this->_mqttClient->subscribe(("device/" + String(this->_serial) + "/action").c_str(), 2);
+	this->_mqttClient->subscribe(("device/" + String(this->_serial) + "/schedule_update").c_str(), 2);
 }
 
 
