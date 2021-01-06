@@ -26,6 +26,8 @@
 
 #define NTP_TIMEOUT 1500
 
+#define DNS_PORT 53
+
 
 namespace XeoSmartHomeInternals {
 	// callbacks
@@ -33,17 +35,17 @@ namespace XeoSmartHomeInternals {
 	typedef std::function<void(JsonArray& parameters)> OnActionCallback;
 	typedef std::function<void(const char * cron, JsonArray& parameters)> OnTimedActionCallback;
 	
-	typedef struct Action{
+	typedef struct Action {
 		char name[ACTION_NAME_MAX_LENGTH];
 		OnActionCallback callback;
 	};
 
-	typedef struct TimedAction{
+	typedef struct TimedAction {
 		char name[ACTION_NAME_MAX_LENGTH];
 		OnTimedActionCallback callback;
 	};
 	
-	struct Settings{
+	struct Settings {
 		bool dhcp = true;
 		IPAddress local_ip;
 		IPAddress gateway;
@@ -65,10 +67,10 @@ namespace XeoSmartHomeInternals {
 
 namespace XeoSmartHomeColorCodes {
 	const CRGB SETTINGS_COLORS[] = {CRGB::Blue, CRGB::Black};
-	const uint8 SETTINGS_INTERVAL = 500;
+	const uint16 SETTINGS_INTERVAL = 500;
 
 	const CRGB WIFI_NOT_CONNECTED[] = {CRGB::Red, CRGB::Black, CRGB::Red, CRGB::Black, CRGB::Red, CRGB::Black, CRGB::Black, CRGB::Black};
-	const uint8 WITI_NOT_CONNECTED_INTERVAL = 250;
+	const uint16 WITI_NOT_CONNECTED_INTERVAL = 250;
 };
 
 
@@ -86,27 +88,94 @@ IPAddress stringToIpAdress(String string) {
 
 class XeoSmartHomeDevice {
 	public:
+		/*
+		Crete a XeoSmartHome device
+		*/	
 		XeoSmartHomeDevice();
 		~XeoSmartHomeDevice();
-		void setName(const char * name);
-		void setSerial(const char * serial);
-		void setDebug(bool debug);
 
+		/*
+		* Set device name
+		* @param name: device name
+		*/
+		void setName(const char * name);
+
+		/*
+		* Set device serial code
+		* @param serial: device serial code
+		*/
+		void setSerial(const char * serial); 
+
+		/*
+		* Enable/disable debug output
+		* @param debug: if true enable debug outpuut, else disable debug output
+		*/
+		void setDebug(bool debug); 
+		
+		/*
+		* Initialize device, must be called in arduino setup()
+		*/
 		void init();
+
+		/*
+		* loop must be called in arduino loop()
+		*/
 		void loop();
+
+		/* 
+		* Set enent handler for button short press
+		* @param callback: function that will be executed when button is pressed
+		*/
 		void setOnButtonPressHandler(XeoSmartHomeInternals::OnButtonPressCallback callback);
+
+		/*
+		* Set an action callback for an action name
+		* Actions are functions that will be executed imediately after them are received
+		* @param action_name: action uri that will be received from the cloud
+		* @param callback: callback function that is paired with action_name
+		*/
 		void addActionHandler(const char * action_name, XeoSmartHomeInternals::OnActionCallback callback);
-		void addTimedActionHamdler(const char * action_name, XeoSmartHomeInternals::OnTimedActionCallback callback);
+
+		/*
+		* Set a timed action callback
+		* Timed actions are function that will be executed the time specified in their cron
+		* @param action_name: action uri that will be received from the cloud
+		* @param callback: callback function that is paired with action_name
+		*/
+		void addTimedActionHamdler(const char * action_name, XeoSmartHomeInternals::OnActionCallback callback);
+
+		/*
+		* Send sensor value to cloud
+		* @param sensor: sensor uri
+		* @param value: sensor value
+		*/
+		bool sendSensorData(const char * sensor, float value);
+
+		/* 
+		* Send status update to server
+		* @param status: status uri
+		* @param 
+		*/
+		bool sendStatusUpdate(const char * status, int value);
 
 	private:
-		char _name[WL_SSID_MAX_LENGTH];
-		char _serial[64];
-		bool _debug = false;
+		char _name[WL_SSID_MAX_LENGTH];  // device name
+		char _serial[64]; // device serial code
+		bool _debug = false; // debug output enabled
 
-		std::vector<XeoSmartHomeInternals::Action> _ActionsVector;
-		std::vector<XeoSmartHomeInternals::TimedAction> _TimedActionsVector;
+		std::vector<XeoSmartHomeInternals::Action> _ActionsVector; // list of device action callbacks
+		std::vector<XeoSmartHomeInternals::Action> _TimedActionsVector; // list of device timed action callback
 
-		void _onAction(const char * message);
+		/*
+		* Called when device receive an action request from cloud
+		* @param messge: message from server, json
+		*/
+		void _onAction(const char * message, size_t len);
+
+		/*
+		* Called when device receive a schedule update request from server
+		* @param messge: message from server, json
+		*/
 		void _onSceduleUpdate(const char * message);
 
 		// TASK SCHEDULER
@@ -115,7 +184,16 @@ class XeoSmartHomeDevice {
 		// LED
 		CRGB _leds[1];
 		Task _ledTask;
+
+		/*
+		* Initialize LED
+		*/
 		void _initLed();
+
+		/*
+		* Set LED to given color
+		* @param color: color to show
+		*/
 		void _setLedColor(CRGB color);
 
 		// COLOR CODES
@@ -130,40 +208,103 @@ class XeoSmartHomeDevice {
 		unsigned long _button_press_time = 0;
 		bool _button_last_state = false;
 		bool _long_detected = false;
+
+		/*
+		* @return true if button is pressed, else return false
+		*/
 		bool _buttonIsPressed();
+
+		/*
+		* Initialize button
+		*/
 		void _initButton();
+
+		/*
+		* Check for button short and long press
+		*/
 		void _checkForButtonStateChanges();
+
+		/*
+		* Called when button long pressed is detected
+		*/
 		void _onButtonLongPress();
 
 		// SETTINGS
 		XeoSmartHomeInternals :: Settings _settings;
+
+		/*
+		* Load device settings from configuration file
+		*/
 		void _loadSettings();
+
+		/*
+		* Save device settings in configuration file
+		*/
 		void _saveSettings();
 
 		// WIFI
 		WiFiEventHandler _WiFiEventStationModeGotIP;
 		WiFiEventHandler _WiFiEventStationModeDisconnected;
-		Task _wifiTimer;
+		Task _wifiTimer; // WiFi disconnect timer
+
+		/*
+		* Initialize WiFi
+		*/
 		void _initWiFi();
+
+		/*
+		* Callback for WiFi connected event
+		* @param event:
+		*/
 		void _onWifiConnected(const WiFiEventStationModeGotIP& event);
+
+		/*
+		* Callback for WiFi disconnected event
+		* @param event:
+		*/
 		void _onWifiDisconnected(const WiFiEventStationModeDisconnected& even);
 
 		// MQTT
-		AsyncMqttClient * _mqttClient;
-		Task _mqttPingTimer;
+		AsyncMqttClient * _mqttClient; // pointer to MQTT client
+		Task _mqttPingTimer; // MQTT ping timer
+
 		void _initMqttClient();
 		void _startMqttClient();
 		void _stopMqttClient();
+
+		/*
+		* MQTT connected callback
+		* @param sessionPresent
+		*/
 		void _onMqttConnected(bool sessionPresent);
+
+		/*
+		* MQTT message callback
+		* @param topic: mqtt topic
+		* @param payload: message to be send
+		* @params properties: AsyncMqttClientMessageProperties
+		* @params len: message length
+		* @params index: message block index
+		* @param total: number of message blocks
+		*/
 		void _onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total);
 
 		// CONFIG-MODE
-		bool _config_mode = false;
+		bool _config_mode = false; // true if config mode in enabled, false if config mode in disabled
+
+		/*
+		* Called when config mode is enabled
+		*/
 		void _startConfigMode();
+
+		/*
+		* Called when config mode is disabled
+		*/
 		void _stopConfigMode();
 
 		// DNS-SERVER
 		AsyncDNSServer * _dnsServer;
+
 		void _initDnsServer();
 		void _startDnsServer();
 		void _stopDnsServer();
@@ -177,8 +318,28 @@ class XeoSmartHomeDevice {
 		// WEB-SOCKET-SERVER
 		AsyncWebSocket * _webSocketServer;
 		void _initWebSocketServer();
+		
+		/*
+		* Called when a web socket event occurs
+		* @param server: poiter to server object
+		* @param client: pointer to client object
+		* @param type: event type
+		* @param arg: extra arguments
+		* @param data: pointer to message
+		* @param len: message length
+		*/
 		void _onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len);
+		
+		/*
+		* Called when device receive a message from websokets
+		* @param server: poiter to server object
+		* @param message: message received
+		*/
 		void _onWebSocketMessage(AsyncWebSocket* server, AsyncWebSocketClient* client, String message);
+		
+		/*
+		* Start async wifi scan, result will be send to send using websockets to config mode client (user phone, laptop, pc, ...)
+		*/
 		void _asyncWifiScan();
 
 		// NTP-CLIENT
@@ -193,8 +354,6 @@ XeoSmartHomeDevice :: XeoSmartHomeDevice() {
 	this->_dnsServer = new AsyncDNSServer();
 	this->_webServer = new AsyncWebServer(XeoSmartHomeInternals::WEB_SERVER_PORT);
 	this->_webSocketServer = new AsyncWebSocket(XeoSmartHomeInternals::WEBSOCKET_SERVER_URL);
-	//this->_wifiUDP = new WiFiUDP();
-	//this->_ntpClient = new NTPClient(*this->_wifiUDP);
 }
 
 
@@ -221,18 +380,19 @@ void XeoSmartHomeDevice :: setDebug(bool debug){
 	this->_debug = debug;
 }
 
-bool asd = false;
+
 void XeoSmartHomeDevice :: init() {
 	this->_initButton();
 	this->_initLed();
 	SPIFFS.begin();
+	delay(500); // wait for file system to initialize
 	this->_loadSettings();
+	this->_initWiFi();
 	this->_initMqttClient();
 	this->_initDnsServer();
 	this->_initWebServer();
 	this->_initWebSocketServer();
 	this->_initNtpClient();
-	this->_initWiFi();
 }
 
 
@@ -256,13 +416,36 @@ void XeoSmartHomeDevice :: addActionHandler(const char * action_name, XeoSmartHo
 	this->_ActionsVector.push_back(action);
 }
 
-void XeoSmartHomeDevice :: addTimedActionHamdler(const char * action_name, XeoSmartHomeInternals::OnTimedActionCallback callback) {
-	XeoSmartHomeInternals::TimedAction timed_action;
+void XeoSmartHomeDevice :: addTimedActionHamdler(const char * action_name, XeoSmartHomeInternals::OnActionCallback callback) {
+	XeoSmartHomeInternals::Action timed_action;
 	strncpy(timed_action.name, action_name, ACTION_NAME_MAX_LENGTH);
 	timed_action.callback = callback;
 	this->_TimedActionsVector.push_back(timed_action);
 }
 
+
+bool XeoSmartHomeDevice :: sendSensorData(const char * sensor, float value){
+	if(not this->_mqttClient->connected())
+		return false;
+	
+	String topic = "device/" + String(this->_serial) + "/sensor/" + String(sensor);
+
+	this->_mqttClient->publish(topic.c_str(), 2, false, String(value).c_str());
+
+	return true;
+}
+
+
+bool XeoSmartHomeDevice :: sendStatusUpdate(const char * status, int value){
+	if(not this->_mqttClient->connected())
+		return false;
+	
+	String topic = "device/" + String(this->_serial) + "/status/" + String(status);
+
+	this->_mqttClient->publish(topic.c_str(), 2, false, String(value).c_str());
+
+	return true;
+}
 // PRIVATE:
 
 void _decodeJwtMessage(){
@@ -270,19 +453,19 @@ void _decodeJwtMessage(){
 }
 
 
-void XeoSmartHomeDevice :: _onAction(const char * message){
+void XeoSmartHomeDevice :: _onAction(const char * message, size_t len){
 	if(this->_debug)
 		Serial.println("OnAction()");
 
 	DynamicJsonDocument doc(4096);
-	deserializeJson(doc, message);
+	deserializeJson(doc, message, len);
 
 	const char * action_name = doc["name"];
 	JsonArray action_parameters = doc["parameters"];
 
 	for (XeoSmartHomeInternals::Action action : this->_ActionsVector){
 		if(strcmp(action.name, action_name) == 0){
-				action.callback(action_parameters);
+			action.callback(action_parameters);
 		}
 	}
 }
@@ -294,6 +477,17 @@ void XeoSmartHomeDevice :: _onSceduleUpdate(const char * message){
 
 	DynamicJsonDocument doc(4096);
 	deserializeJson(doc, message);
+
+	const char * action_name = doc["name"];
+	JsonArray action_parameters = doc["parameters"];
+
+	for(XeoSmartHomeInternals::Action timed_action : this->_TimedActionsVector){
+		if(strcmp(timed_action.name, action_name) == 0){
+			Serial.print(action_name);
+			Serial.println(" - timed action");
+			//timed_action.callback(action_parameters);
+		}
+	}
 }
 
 //<BUTTON>
@@ -418,7 +612,8 @@ void XeoSmartHomeDevice :: _initWiFi() {
 	//WiFi.mode(WIFI_STA);
 	WiFi.hostname(this->_name);
 	WiFi.softAP(this->_name);
-
+	WiFi.softAPConfig(IPAddress(8,8,8,8), IPAddress(8,8,8,8), IPAddress(255, 255, 255, 0));
+	delay(500);
 	//WiFi.softAPConfig(accesPointIp, accesPointIp, NET_MASK);
 
 	WiFi.mode(WIFI_STA);
@@ -463,6 +658,8 @@ void XeoSmartHomeDevice ::_onWifiDisconnected(const WiFiEventStationModeDisconne
 		Serial.println(event.reason);
 	}
 
+	this->_stopMqttClient();
+
 	this->_wifiTimer.setInterval(20 * 1000);
 	this->_wifiTimer.setIterations(TASK_FOREVER);
 	this->_wifiTimer.setCallback([this](){
@@ -493,8 +690,8 @@ void XeoSmartHomeDevice :: _initMqttClient() {
 			Serial.println("MQTT sending ping");
 		String topic = "device/" + String(this->_serial) + "/ping";
 		this->_mqttClient->publish(topic.c_str(), 2, false, "ping");
-		size_t now = time(nullptr);
-		Serial.println(ctime(&now));
+		time_t now = time(nullptr);
+		Serial.print(ctime(&now));
 	});
 	this->_mqttPingTimer.enable();
 }
@@ -520,23 +717,23 @@ void XeoSmartHomeDevice :: _onMqttConnected(bool sessionPresent){
 
 
 void XeoSmartHomeDevice :: _onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
-	payload[len] = 0;
 
 	if(this->_debug){
 		Serial.println("MQTT message received");
 		Serial.print("topic: ");
 		Serial.println(topic);
 		Serial.print("payload: ");
-		Serial.println(payload);
+		Serial.write(payload, len);
+		Serial.println();
 	}
 
 	String _topic = String(topic);
 
 	if(_topic.endsWith("action")){		
-		this->_onAction(payload);
+		this->_onAction(payload, len);
 	} else 
 	if (_topic.endsWith("schedule")){
-		this->_onSceduleUpdate(payload);
+		//this->_onSceduleUpdate(payload);
 	}
 
 }
@@ -578,7 +775,7 @@ void XeoSmartHomeDevice :: _initDnsServer() {
 
 
 void XeoSmartHomeDevice :: _startDnsServer() {
-	this->_dnsServer->start(53, "*", IPAddress(192,168,4,1));
+	this->_dnsServer->start(DNS_PORT, "*", IPAddress(8,8,8,8));
 }
 
 
@@ -785,7 +982,7 @@ void XeoSmartHomeDevice :: _asyncWifiScan() {
 // <NTP-CLIENT>
 
 void XeoSmartHomeDevice :: _initNtpClient(){
-	configTime(3*60*60, 0, "pool.ntp.org");
+	configTime(2*60*60, 0, "pool.ntp.org");
 }
 
 // </NTP-CLIENT>

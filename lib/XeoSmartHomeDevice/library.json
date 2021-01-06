@@ -1,0 +1,21 @@
+{
+    "name": "XeoSmartHome",
+    "version": "1.0.0",
+    "description": "XeoSmartHome library for programing ESP8266 devices.",
+    "keywords": "xeo, smart, home",
+    "authors":
+    [
+      {
+        "name": "Claudiu Neamtu",
+        "email": "xeosmarthome@gmail.com",
+        "url": "https://xeosmarthome.com"
+      }
+    ],
+    "license": "XEO",
+    "homepage": "https://xeosmarthome.com",
+    "dependencies": {
+      "develo/ESPAsyncDNSServer": "*"
+    },
+    "frameworks": "*",
+    "platforms": "*"
+  }

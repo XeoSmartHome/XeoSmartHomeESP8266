@@ -1,4 +1,4 @@
-#pragma once
+/*#pragma once
 
 #include <Arduino.h>
 #include <FastLED.h>
@@ -64,4 +64,4 @@ void main(){
     Scheduler _taskScheduler;
     ledManager.setColor(CRGB::Red);
     _taskScheduler.addTask(*ledManager.getTask());
-}
+}*/
